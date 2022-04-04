@@ -9,7 +9,7 @@ class Matrix {
     using MatrixVector = std::vector<std::vector<int>>;
     using String = std::string;
   
-    Matrix(String nome = "");
+    Matrix(int rows, int columns, String nome = "");
   
     ~Matrix() = default;
   
@@ -39,8 +39,10 @@ class Matrix {
   
   private:
     MatrixVector data;
-    
     String nome;
+  
+    int rows = 0;
+    int columns = 0;
 };
 
 #endif
