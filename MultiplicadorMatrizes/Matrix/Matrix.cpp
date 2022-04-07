@@ -9,7 +9,7 @@
 //-------------------------------------------------
 
 Matrix::Matrix(int _rows, int _columns, std::string _nome) :
-  data({}),
+  data({ }),
   rows(_rows),
   columns(_columns),
   nome(_nome)

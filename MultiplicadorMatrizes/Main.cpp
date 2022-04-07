@@ -1,39 +1,73 @@
 #include "Matrix/Matrix.h"
 
+#include <chrono>
 #include <iostream>
 #include <thread>
 
 #include <pthread.h>
 #include <stdlib.h>
-
+#include <unistd.h>
 
 //-------------------------------------------------
+using timePoint = std::chrono::system_clock::time_point;
 
-static int totalLines = 0;
+const unsigned int numberOfThreads = std::thread::hardware_concurrency();
+Matrix m1(500, 500, "M1");
+Matrix m2(500, 500, "M2");
 
-struct ThreadLines {
-  Matrix m1;
-  Matrix m2;
+timePoint endTimeProduct;
+timePoint endTimePosicional;
+timePoint inicialTimePosicional;
+
+struct ThreadInfo {
   Matrix *result1;
-  Matrix *result2;
   int initialLine;
   int finalLine;
 };
 
-pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-
 namespace {
-  void MultiplyMatrix(const Matrix& m1, const Matrix& m2, Matrix& result, int initialLine, int finalLine)
+  void MultiplyMatrixSequencial(Matrix& result)
   {
-    int start = finalLine == 0 ? 0 : finalLine;
-    int end = initialLine == 0 ? m1.GetRows() : initialLine;
+    const int rows = m1.GetRows();
     const int columns = m2.GetColumns();
     
-    //int initialLine = totalLines
+    for (int i = 0; i < rows; i++) {
+      for (int j = 0; j < columns; j++) {
+        for (int k = 0; k < rows; k++) {
+          result.At(i, j) = result.At(i, j) + (m1.At(i, k) * m2.At(k, j));
+        }
+      }
+    }
+  }
+  
+  //-------------------------------------------------
+  
+  void MultiplyMatrixParallelPThreads(Matrix& result, const int initialLine, const int finalLine)
+  {
+    const int start = initialLine;
+    const int end = finalLine == 0 ? m1.GetRows() : finalLine;
+    const int columns = m2.GetColumns();
     
     for (int i = start; i < end; i++) {
       for (int j = 0; j < columns; j++) {
-        for (int k = 0; k < end; k++) {
+        for (int k = 0; k < columns; k++) {
+          result.At(i, j) = result.At(i, j) + (m1.At(i, k) * m2.At(k, j));
+        }
+      }
+    }
+  }
+  
+  //-------------------------------------------------
+  
+  void MultiplyMatrixParallelOpenMP(Matrix& result)
+  {
+    const int rows = m1.GetRows();
+    const int columns = m2.GetColumns();
+    
+    #pragma omp parallel for
+    for (int i = 0; i < rows; i++) {
+      for (int j = 0; j < columns; j++) {
+        for (int k = 0; k < rows; k++) {
           result.At(i, j) = result.At(i, j) + (m1.At(i, k) * m2.At(k, j));
         }
       }
@@ -42,9 +76,9 @@ namespace {
   
   //-------------------------------------------------
 
-  void MultiplyMatrixByPosition(const Matrix& m1, const Matrix& m2, Matrix& result, int line)
+  void MultiplyMatrixByPositionSequencial(Matrix& result)
   {
-    int rows = line == 0 ? m1.GetRows() : line;
+    const int rows = m1.GetRows();
     const int columns = m2.GetColumns();
     
     for (int i = 0; i < rows; i++) {
@@ -56,29 +90,133 @@ namespace {
   
   //-------------------------------------------------
 
-  void* run(void* arg)
+  void MultiplyMatrixByPositionParallelPThreads(Matrix& result, const int initialLine, const int finalLine)
   {
-    struct ThreadLines *info = (ThreadLines*)arg;
+    const int start = initialLine;
+    const int end = finalLine == 0 ? m1.GetRows() : finalLine;
+    const int columns = m2.GetColumns();
+    
+    for (int i = start; i < end; i++) {
+      for (int j = 0; j < columns; j++) {
+        result.At(i, j) = m1.At(i, j) * m2.At(i, j);
+      }
+    }
+  }
+  
+  //-------------------------------------------------
 
+  void MultiplyMatrixByPositionParallelOpenMP(Matrix& result)
+  {
+    const int rows = m1.GetRows();
+    const int columns = m2.GetColumns();
     
-    MultiplyMatrix(info->m1, info->m2, *info->result1, info->initialLine, info->finalLine);
-    pthread_mutex_lock(&mutex);
-    std::cout << "initial: " << info->initialLine << "final: " << info->finalLine << std::endl;
-    pthread_mutex_unlock(&mutex);
-    std::cout << "Thread finished.\n" << std::endl;
+    #pragma omp parallel for
+    for (int i = 0; i < rows; i++) {
+      for (int j = 0; j < columns; j++) {
+        result.At(i, j) = m1.At(i, j) * m2.At(i, j);
+      }
+    }
+  }
+  
+  //-------------------------------------------------
+
+  void StartSequencial(const int rows, const int columns)
+  {
+    Matrix sequencialProductResult(rows, columns, "ProdutoMatricial");
+    Matrix sequencialPosicionalResult(rows, columns, "ProdutoPosicional");
     
+    timePoint initialTime = std::chrono::system_clock::now();
+    MultiplyMatrixSequencial(sequencialProductResult);
+    timePoint finalTime = std::chrono::system_clock::now();
+    std::chrono::duration<double> elapsed_seconds = finalTime - initialTime;
+    std::cout << "Produto matricial sequencial: " << elapsed_seconds.count() << std::endl;
+    
+    initialTime = std::chrono::system_clock::now();
+    MultiplyMatrixByPositionSequencial(sequencialPosicionalResult);
+    finalTime = std::chrono::system_clock::now();
+    elapsed_seconds = finalTime - initialTime;
+    std::cout << "Produto posicional sequencial: " << elapsed_seconds.count() << std::endl;
+  }
+  
+  //-------------------------------------------------
+  
+  void* runProduct(void* arg)
+  {
+    struct ThreadInfo *info = (ThreadInfo*)arg;
+    MultiplyMatrixParallelPThreads(*info->result1, info->initialLine, info->finalLine);
+    endTimeProduct = std::chrono::system_clock::now();
+    inicialTimePosicional = std::chrono::system_clock::now();
+    MultiplyMatrixByPositionParallelPThreads(*info->result1, info->initialLine, info->finalLine);
+    endTimePosicional = std::chrono::system_clock::now();
     return 0;
   }
   
+  void StartPThreads(const int rows, const int columns)
+  {
+    Matrix pThreadsProductResult(rows, columns, "ProdutoMatricialPThreads");
+    Matrix pThreadsPosicionalResult(rows, columns, "ProdutoPosicionalPThreads");
+    
+    pthread_t threads[numberOfThreads];
+    
+    const int totalLines = rows;
+    int resto = totalLines % numberOfThreads;
+    int linesPerThread = totalLines / numberOfThreads;
+    int finalLine = 0;
+
+    struct ThreadInfo *threadInfo;
+    std::vector<ThreadInfo*> threadsParam;
+    for (int i = 0; i < numberOfThreads; i++) {
+      threadInfo = new ThreadInfo{&pThreadsProductResult, 0, 0};
+      threadInfo->initialLine = finalLine;
+      threadInfo->finalLine = threadInfo->initialLine + linesPerThread;
+      
+      if (resto != 0) {
+        threadInfo->finalLine++;
+        resto--;
+      }
+      finalLine = threadInfo->finalLine;
+      threadsParam.push_back(threadInfo);
+    }
+    
+    timePoint initialTime = std::chrono::system_clock::now();
+    for (int i = 0; i < numberOfThreads; i++) {
+      pthread_create(&threads[i], nullptr, runProduct, (void*)threadsParam[i]);
+    }
+    
+    for(int i = 0; i < numberOfThreads; i++) {
+      pthread_join(threads[i], nullptr);
+    }
+    
+    std::chrono::duration<double> elapsed_seconds = endTimeProduct  - initialTime;
+    std::cout << "Produto Matricial PThreads: " << elapsed_seconds.count() << std::endl;
+    elapsed_seconds = endTimePosicional  - inicialTimePosicional ;
+    std::cout << "Produto Posicional PThreads: " << elapsed_seconds.count() << std::endl;
+    pthread_exit(nullptr);
+  }
+
+  void StartOpenMP (const int rows, const int columns)
+  {
+    Matrix ompProductResult(rows, columns, "ProdutoMatricialParalelo");
+    Matrix ompPosicionalResult(rows, columns, "ProdutoPosicionalParalelo");
+    
+    timePoint initialTime = std::chrono::system_clock::now();
+    MultiplyMatrixParallelOpenMP(ompProductResult);
+    timePoint finalTime = std::chrono::system_clock::now();
+    std::chrono::duration<double> elapsed_seconds = finalTime - initialTime;
+    std::cout << "Produto Matricial OMP: " << elapsed_seconds.count() << std::endl;
+    
+    initialTime = std::chrono::system_clock::now();
+    MultiplyMatrixByPositionParallelOpenMP(ompPosicionalResult);
+    finalTime = std::chrono::system_clock::now();
+    elapsed_seconds = finalTime - initialTime;
+    std::cout << "Produto Posicional OMP: " << elapsed_seconds.count() << std::endl;
+  }
 }
 
 //-------------------------------------------------
 
 int main()
 {
-  Matrix m1(4, 4, "M1");
-  Matrix m2(4, 4, "M2");
-
   const int rowsFromM1 = m1.GetRows();
   const int columnsFromM2 = m2.GetColumns();
   
@@ -88,53 +226,19 @@ int main()
     m1.FillMatrixWithRandomNumbers();
     m2.FillMatrixWithRandomNumbers();
     
-    Matrix result1(rowsFromM1, columnsFromM2, "ProdutoMatricial");
-    Matrix result2(rowsFromM1, columnsFromM2, "ProdutoPosicional");
-    Matrix resultParalelo1(rowsFromM1, columnsFromM2, "ProdutoMatricialParalelo");
-    Matrix resultParalelo2(rowsFromM1, columnsFromM2, "ProdutoPosicionalParalelo");
+    const int rowsFromM1 = m1.GetRows();
+    const int columnsFromM2 = m2.GetColumns();
     
-    totalLines = rowsFromM1;
+    StartSequencial(rowsFromM1, columnsFromM2);
     
-    const unsigned int numberOfThreads = std::thread::hardware_concurrency();
-    pthread_t threads[numberOfThreads];
-  
-    struct ThreadLines *threadLines;
+    StartPThreads(rowsFromM1, columnsFromM2);
     
-    int resto = totalLines % numberOfThreads;
-    int linesPerThread = totalLines / numberOfThreads;
-    
-    for(int i = 0; i < numberOfThreads; i++) {
-      threadLines = new ThreadLines{m1, m2, &resultParalelo1, &resultParalelo2, 0, 0};
-      threadLines->initialLine = i * linesPerThread;
-      threadLines->finalLine = threadLines->initialLine + linesPerThread;
-      
-      if(resto != 0) {
-        threadLines->finalLine++;
-        resto--;
-      }
-      
-      pthread_create(&threads[i], nullptr, run, (void*)threadLines);
-    }
-    
-    for(int i = 0; i < numberOfThreads; i++) {
-      pthread_join(threads[i], nullptr);
-    }
-    
-    //MultiplyMatrix(m1, m2, result1, 0, 0);
-    //MultiplyMatrixByPosition(m1, m2, result2, 0);
-    
-    if (m1.GetRows() <= 10){
-      m1.PrintMatrix();
-      m2.PrintMatrix();
-      resultParalelo1.PrintMatrix();
-      resultParalelo2.PrintMatrix();
-    }
+    StartOpenMP(rowsFromM1, columnsFromM2);
   }
   else {
     std::cout << "Numero de colunas da m1 deve ser igual ao numero de linhas da m2." << std::endl;
   }
   
-  pthread_exit(nullptr);
   return 0;
 }
 

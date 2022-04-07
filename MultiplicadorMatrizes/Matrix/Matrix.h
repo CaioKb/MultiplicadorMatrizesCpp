@@ -6,11 +6,13 @@
 
 class Matrix {
   public:
-    using MatrixVector = std::vector<std::vector<int>>;
+    using MatrixVector = std::vector< std::vector<int> >;
     using String = std::string;
   
     Matrix(int rows, int columns, String nome = "");
   
+    Matrix() = default;
+
     ~Matrix() = default;
   
     void CreateMatrix(int rows, int columns);
