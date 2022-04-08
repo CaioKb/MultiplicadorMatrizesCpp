@@ -15,15 +15,9 @@ using timePoint = std::chrono::system_clock::time_point;
 Matrix m1(500, 500, "M1");
 Matrix m2(500, 500, "M2");
 
-std::vector<int> integerArray(500);
-int parallelResult = 0;
-int ompResult = 0;
-
 timePoint endTimeProduct;
 timePoint endTimePosicional;
 timePoint initialTimePosicional;
-timePoint initialTimeArray;
-timePoint finalTimeArray;
 
 struct ThreadInfo {
   Matrix *result1;
@@ -45,12 +39,6 @@ void MultiplyMatrixByPositionParallelPThreads(Matrix& result, const int initialL
 
 void MultiplyMatrixByPositionParallelOMP(Matrix& result);
 
-void SumArrayElementsSequencial (int& result);
-
-void SumArrayElementsParalellPThreads (const int initialLine, const int finalLine);
-
-void SumArrayElementsParallelOMP (int& result);
-
 void FillVector(std::vector<int>& vector);
 
 void StartSequencial(const int rows, const int columns);
@@ -70,9 +58,7 @@ int main()
   
   const bool canMultiply = rowsFromM1 == columnsFromM2;
   
-  FillVector(integerArray);
-  
-  if (canMultiply && integerArray.size() > 0) {
+  if (canMultiply) {
     m1.FillMatrixWithRandomNumbers();
     m2.FillMatrixWithRandomNumbers();
     
@@ -93,7 +79,7 @@ int main()
   return 0;
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void StartSequencial(const int rows, const int columns)
 {
@@ -112,18 +98,9 @@ void StartSequencial(const int rows, const int columns)
   finalTime = std::chrono::system_clock::now();
   elapsed_seconds = finalTime - initialTime;
   std::cout << "Produto posicional sequencial: " << elapsed_seconds.count() << std::endl;
-  
-  int result = 0;
-  
-  initialTime = std::chrono::system_clock::now();
-  SumArrayElementsSequencial(result);
-  finalTime = std::chrono::system_clock::now();
-  elapsed_seconds = finalTime - initialTime;
-  std::cout << "Soma Números Array Sequencial: " << elapsed_seconds.count() << std::endl;
-  std::cout << "resultSeq: " << result << std::endl;
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void StartPThreads(const int rows, const int columns)
 {
@@ -167,14 +144,9 @@ void StartPThreads(const int rows, const int columns)
   std::cout << "Produto Matricial PThreads: " << elapsed_seconds.count() << std::endl;
   elapsed_seconds = endTimePosicional  - initialTimePosicional ;
   std::cout << "Produto Posicional PThreads: " << elapsed_seconds.count() << std::endl;
-  elapsed_seconds = finalTimeArray  - initialTimeArray ;
-  std::cout << "Soma Array: " << elapsed_seconds.count() << std::endl;
-  
-  std::cout << "result: " << parallelResult << std::endl;
-
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void StartOpenMP (const int rows, const int columns)
 {
@@ -192,19 +164,10 @@ void StartOpenMP (const int rows, const int columns)
   finalTime = std::chrono::system_clock::now();
   elapsed_seconds = finalTime - initialTime;
   std::cout << "Produto Posicional OMP: " << elapsed_seconds.count() << std::endl;
-  
-  int ompResult = 0;
-  
-  initialTime = std::chrono::system_clock::now();
-  SumArrayElementsParallelOMP(ompResult);
-  finalTime = std::chrono::system_clock::now();
-  elapsed_seconds = finalTime - initialTime;
-  std::cout << "Soma Array OMP: " << elapsed_seconds.count() << std::endl;
-  std::cout << "result: " << parallelResult << std::endl;
 }
 
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void* Run(void* arg)
 {
@@ -216,13 +179,10 @@ void* Run(void* arg)
   MultiplyMatrixByPositionParallelPThreads(*info->result1, info->initialLine, info->finalLine);
   endTimePosicional = std::chrono::system_clock::now();
   
-  initialTimeArray = std::chrono::system_clock::now();
-  SumArrayElementsParalellPThreads(info->initialLine, info->finalLine);
-  finalTimeArray = std::chrono::system_clock::now();
   return 0;
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void MultiplyMatrixSequencial(Matrix& result)
 {
@@ -238,7 +198,7 @@ void MultiplyMatrixSequencial(Matrix& result)
   }
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void MultiplyMatrixParallelPThreads(Matrix& result, const int initialLine, const int finalLine)
 {
@@ -255,7 +215,7 @@ void MultiplyMatrixParallelPThreads(Matrix& result, const int initialLine, const
   }
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void MultiplyMatrixParallelOpenMP(Matrix& result)
 {
@@ -272,7 +232,7 @@ void MultiplyMatrixParallelOpenMP(Matrix& result)
   }
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void MultiplyMatrixByPositionSequencial(Matrix& result)
 {
@@ -286,7 +246,7 @@ void MultiplyMatrixByPositionSequencial(Matrix& result)
   }
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void MultiplyMatrixByPositionParallelPThreads(Matrix& result, const int initialLine, const int finalLine)
 {
@@ -301,7 +261,7 @@ void MultiplyMatrixByPositionParallelPThreads(Matrix& result, const int initialL
   }
 }
 
-/*------------------------------------------------------------------------*/
+//------------------------------------------------------------------------
 
 void MultiplyMatrixByPositionParallelOMP(Matrix& result)
 {
@@ -316,45 +276,4 @@ void MultiplyMatrixByPositionParallelOMP(Matrix& result)
   }
 }
 
-/*------------------------------------------------------------------------*/
-
-void SumArrayElementsSequencial (int& result)
-{
-  for(int i = 0; i < integerArray.size(); i++) {
-    result += integerArray[i];
-  }
-}
-
-/*------------------------------------------------------------------------*/
-
-void SumArrayElementsParalellPThreads (const int initialLine, const int finalLine)
-{
-  int partialSum = 0;
-  for(int i = initialLine; i < finalLine; i++) {
-    partialSum += integerArray[i];
-  }
-  
-  pthread_mutex_lock(&mutex);
-  parallelResult += partialSum;
-  pthread_mutex_unlock(&mutex);
-}
-
-/*------------------------------------------------------------------------*/
-
-void SumArrayElementsParallelOMP (int& result)
-{
-	#pragma omp parallel for
-  for(int i = 0; i < integerArray.size(); i++) {
-    result += integerArray[i];
-  }
-}
-
-/*------------------------------------------------------------------------*/
-
-void FillVector(std::vector<int>& vector)
-{
-  srand((int)time(NULL));
-  for (int i = 0; i < vector.size(); i++) {
-    vector.at(i) = rand() % 10;
-  }
-}
+//------------------------------------------------------------------------
